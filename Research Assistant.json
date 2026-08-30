@@ -1,0 +1,154 @@
+{
+  "name": "Research Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL@gmail.com",
+        "subject": "=Your research Output on  {{ $('On form submission').item.json['What Topic do you want to Know about ? '] }}",
+        "emailType": "text",
+        "message": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        544,
+        0
+      ],
+      "id": "00edc6b6-0ef0-4a9d-adc7-197173075954",
+      "name": "Send a message",
+      "webhookId": "e5b057c9-83ba-4562-87df-72288bf49e89",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Your gmailOAuth2 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -640,
+        64
+      ],
+      "id": "94063ddc-52c1-4939-a831-d728d30e007b",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json['What Topic do you want to Know about ? '] }}",
+        "options": {
+          "systemMessage": "You are a research assistant. You will use tools available to you to research on topics and provide summarized content "
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        192,
+        0
+      ],
+      "id": "90faaf18-f448-4cd4-a390-ef7c04422e74",
+      "name": "Research Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        192,
+        208
+      ],
+      "id": "93e7dc30-d090-4e15-b941-152074a3ed9b",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Your googlePalmApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "Topic For Research",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "What Topic do you want to Know about ? "
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -96,
+        0
+      ],
+      "id": "ba0989ec-cd27-46fb-a268-8d03749ce3e0",
+      "name": "On form submission",
+      "webhookId": "5f0dc9bb-8c50-4ef6-ab75-fb56acb1855e"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        []
+      ]
+    },
+    "Research Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Research Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f7f26c74-b97b-4f35-855c-a1f1f4490b88",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b3e466f0e23da6be4e0ad49c767513cc1e689e591ea49cca61d03fa8eef17460"
+  },
+  "id": "K6AQEGmjF6AQaXl1",
+  "tags": []
+}
