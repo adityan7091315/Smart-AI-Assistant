@@ -1,0 +1,244 @@
+{
+  "name": "Financial Analyst",
+  "nodes": [
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get row(s) in sheet in Google Sheets",
+        "documentId": {
+          "__rl": true,
+          "value": "1YszADBbiUPcj10-udTya2QYEnSZ9dXgLRJvL22LyZEI",
+          "mode": "list",
+          "cachedResultName": "Balance_sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YszADBbiUPcj10-udTya2QYEnSZ9dXgLRJvL22LyZEI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1YszADBbiUPcj10-udTya2QYEnSZ9dXgLRJvL22LyZEI/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        416,
+        368
+      ],
+      "id": "6abd3fbb-4637-464f-94fc-2bf8651ae5b4",
+      "name": "Account Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jvBI7LZr67vfyq62",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "adityanawhal18@gmail.com",
+        "subject": "Financial Analysis",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        912,
+        144
+      ],
+      "id": "84df0932-46bb-413c-a2ba-d83d21e3d825",
+      "name": "Send a message",
+      "webhookId": "871e4b3a-44bd-4723-8032-3f79127f420d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gg1gByBEGXUUGU3L",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ================= INPUT =================\nconst input = $input.first()?.json;\nlet reportText;\n\nif (!input) throw new Error('No input data provided');\n\nif (typeof input === 'string') {\n  reportText = input.trim();\n} else if (input.output) {\n  reportText = input.output.trim();\n} else {\n  throw new Error('Invalid input format');\n}\n\n// ================= HELPER =================\nfunction textToHtml(sectionText) {\n  if (!sectionText) return '<p>No data available</p>';\n\n  if (sectionText.match(/^- /gm) || sectionText.match(/^\\d+\\. /gm)) {\n    const lis = sectionText\n      .replace(/^- /gm, '<li>')\n      .replace(/^\\d+\\. /gm, '<li>')\n      .replace(/\\n/g, '</li>');\n    return '<ul>' + lis + '</ul>';\n  } else {\n    return '<p>' + sectionText.replace(/\\n/g, '<br>') + '</p>';\n  }\n}\n\nfunction extractSection(text, start, end) {\n  const regex = new RegExp(start + \"[\\\\s\\\\S]*?\" + (end ? \"(?=\" + end + \")\" : \"$\"), \"i\");\n  const match = text.match(regex);\n  return match ? match[0].replace(new RegExp(start, \"i\"), \"\").trim() : \"\";\n}\n\nfunction extractNumber(text, label) {\n  const regex = new RegExp(label + \"[:\\\\s]*\\\\$?([\\\\d.,]+)\", \"i\");\n  const match = text.match(regex);\n  return match ? parseFloat(match[1].replace(/,/g, '')) : 0;\n}\n\n// ================= EXTRACT SECTIONS =================\nlet title = \"Financial Analysis Report\";\n\nlet overviewSection = extractSection(reportText, \"Overview\", \"Income\");\nlet incomeSection = extractSection(reportText, \"Income\", \"Expenses\");\nlet expensesSection = extractSection(reportText, \"Expenses\", \"Trends\");\nlet trendsSection = extractSection(reportText, \"Trends\", \"Summary\");\nlet summarySection = extractSection(reportText, \"Summary\", null);\n\n// Title\nconst titleMatch = reportText.match(/^(.*?)(?=Overview)/i);\nif (titleMatch) title = titleMatch[1].trim();\n\n// ================= NUMBERS =================\nlet beginningBalance = extractNumber(overviewSection, \"Beginning Balance\");\nlet endingBalance = extractNumber(overviewSection, \"Ending Balance\");\nlet totalIncome = extractNumber(overviewSection, \"Total Income\");\nlet totalExpenses = extractNumber(overviewSection, \"Total Expenses\");\n\n// ================= TRANSACTIONS =================\nconst transactions = [];\nconst expenseCats = [];\nconst expenseAmts = [];\n\n// 🔥 INCOME PARSING (VERY FLEXIBLE)\nincomeSection.split('\\n').forEach(line => {\n  const match = line.match(/(.*?):\\s*\\$?([\\d.,]+).*?(\\d{4}-\\d{2}-\\d{2})/);\n  if (match) {\n    const amt = parseFloat(match[2].replace(/,/g, ''));\n    const date = match[3];\n    transactions.push({ date, amount: amt, desc: match[1] });\n    totalIncome += amt; // fallback if missing\n  }\n});\n\n// 🔥 EXPENSE PARSING (VERY FLEXIBLE)\nexpensesSection.split('\\n').forEach(line => {\n  const match = line.match(/(.*?):\\s*\\$?([\\d.,]+)/);\n  if (match) {\n    const category = match[1].trim();\n    const amt = parseFloat(match[2].replace(/,/g, ''));\n\n    expenseCats.push(category);\n    expenseAmts.push(amt);\n\n    const dateMatch = line.match(/(\\d{4}-\\d{2}-\\d{2})/);\n    const date = dateMatch ? dateMatch[1] : \"2025-01-01\";\n\n    transactions.push({ date, amount: -amt, desc: category });\n    totalExpenses += amt; // fallback\n  }\n});\n\n// ================= SAFETY FIX =================\nif (totalIncome === 0) totalIncome = 1;\nif (totalExpenses === 0) totalExpenses = 1;\n\nif (expenseCats.length === 0) {\n  expenseCats.push(\"No Data\");\n  expenseAmts.push(1);\n}\n\n// ================= BALANCE TREND =================\ntransactions.sort((a, b) => new Date(a.date) - new Date(b.date));\n\nlet balance = beginningBalance || 0;\nconst dataPoints = [];\n\ntransactions.forEach(t => {\n  balance += t.amount;\n  dataPoints.push({ date: t.date, balance });\n});\n\n// fallback if no transactions\nif (dataPoints.length === 0) {\n  dataPoints.push({ date: \"2025-01-01\", balance: balance });\n}\n\n// ================= CHARTS =================\nconst encodeChart = config =>\n  `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}`;\n\n// Bar chart\nconst barUrl = encodeChart({\n  type: 'bar',\n  data: {\n    labels: ['Income', 'Expenses'],\n    datasets: [{ data: [totalIncome, totalExpenses] }]\n  }\n});\n\n// Pie chart\nconst pieUrl = encodeChart({\n  type: 'pie',\n  data: {\n    labels: expenseCats,\n    datasets: [{ data: expenseAmts }]\n  }\n});\n\n// Line chart\nconst lineUrl = encodeChart({\n  type: 'line',\n  data: {\n    labels: dataPoints.map(d => d.date),\n    datasets: [{ label: 'Balance', data: dataPoints.map(d => d.balance) }]\n  }\n});\n\n// ================= HTML =================\nconst html = `\n<html>\n<head>\n<style>\nbody { font-family: Arial; max-width: 800px; margin:auto; padding:20px; }\nh1,h2,h3 { color:#333; }\nul { padding-left:20px; }\nimg { max-width:100%; margin:10px 0; }\n</style>\n</head>\n<body>\n\n<h1>${title}</h1>\n\n<h2>Overview</h2>\n${textToHtml(overviewSection)}\n\n<h3>Income vs Expenses</h3>\n<img src=\"${barUrl}\" />\n\n<h2>Income</h2>\n${textToHtml(incomeSection)}\n\n<h2>Expenses</h2>\n${textToHtml(expensesSection)}\n\n<h3>Expense Breakdown</h3>\n<img src=\"${pieUrl}\" />\n\n<h3>Balance Trend</h3>\n<img src=\"${lineUrl}\" />\n\n<h2>Trends & Insights</h2>\n${textToHtml(trendsSection)}\n\n<h2>Summary & Recommendations</h2>\n${textToHtml(summarySection)}\n\n</body>\n</html>\n`;\n\n// ================= OUTPUT =================\nreturn [{ json: { html } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        144
+      ],
+      "id": "c969dc09-0c62-485a-9d20-6d8765abc833",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        128,
+        352
+      ],
+      "id": "4bd64e28-b5ff-4deb-a2d3-745d83460989",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "2VZTjcZwIEkPb7UE",
+          "name": "Google Gemini(PaLM) Api account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.start_date }}{{ $json.end_date }}{{ $json.focus }} Report Type: {{$json[\"report_type\"]}}",
+        "options": {
+          "systemMessage": "=You are an AI Financial Analyst Agent.\nYour task is to analyze bank account transaction data from Google Sheets and generate a clear, structured financial analysis report.\n\n\nInput Data Format\n\nYou will receive rows with the following fields:\n\nDate (YYYY-MM-DD)\n\nCategory (e.g., Salary, Groceries, Rent, Transport, Utilities, Entertainment)\n\nDescription (transaction note)\n\nAmount (positive = income, negative = expense)\n\nAnalysis Steps\n\nOverview\n\nCalculate the Beginning Balance (first available balance or computed from first row).\n\nCalculate the Ending Balance (last available balance).\n\nCompute Total Income and Total Expenses.\n\nHighlight the largest income source and largest expense category.\n\nIncome Analysis\n\nBreak down income sources (salary, interest, reimbursements, etc.) with amounts and dates.\n\nIdentify any irregular or one-off large deposits.\n\nExpense Analysis\n\nAggregate expenses by category and show totals.\n\nIdentify top 3 categories where most money is spent.\n\nHighlight any unusual spikes (days/months with very high expenses).\n\nTrends & Insights\n\nShow cash flow trend (weekly or monthly net savings = income − expenses).\n\nDetect spending patterns (e.g., most spending on weekends, recurring subscriptions, seasonal variations).\n\nFlag any negative cash flow periods.\n\nSummary & Recommendations\n\nProvide a short narrative summary in natural language (2–4 paragraphs).\n\nSuggest actionable insights (e.g., “Reduce spending on dining out”, “Consider automating savings”).\n\nOutput Format\n\nAlways structure the report as follows:\n\nFinancial Analysis Report for the Account\n\nOverview\n\nBeginning Balance: $X\n\nEnding Balance: $Y\n\nTotal Income: $Z\n\nTotal Expenses: $W\n\nIncome\n\nList sources with amounts and dates.\n\nExpenses by Category\n\nCategory: $Amount (with breakdown if available).\n\nTrends & Insights\n\nBullet points summarizing cash flow and spending patterns.\n\nSummary & Recommendations\n\n2–4 paragraphs written in plain English.\n\nOutput Rules\n\nAlways format amounts as $X,XXX.XX (two decimal places).\n\nKeep language professional but easy to read.\n\nAvoid raw tables unless summarizing categories; otherwise, write in paragraphs and bullet points.\nIMPORTANT:\nFollow the exact section headings and spacing below. Do not modify wording or structure:\n\nOverview\n\nIncome\n\nExpenses by Category\n\nTrends & Insights\n\nSummary & Recommendations\n\nEach section must be separated by EXACTLY one blank line.\n\nIMPORTANT: Report Type Handling\n\nIf Report Type = \"Summary\":\n\n* Keep the report SHORT\n* Only include:\n\n  * Overview (numbers only)\n  * Top 2–3 insights\n  * Short summary (3–5 lines)\n* DO NOT include detailed breakdowns of income or expenses\n* DO NOT include long lists\n\nIf Report Type = \"Detailed\":\n\n* Include FULL breakdown:\n\n  * All income entries\n  * All expense categories\n  * Detailed trends\n  * Full explanation\n\nStrictly follow the Report Type. Do not ignore it.\n",
+          "passthroughBinaryImages": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        256,
+        144
+      ],
+      "id": "9a4b4f88-8924-4fcd-adb0-2d71d0f52077",
+      "name": "Data Analyst"
+    },
+    {
+      "parameters": {
+        "formTitle": "Financial Analysis Generator",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Start Date",
+              "fieldType": "date",
+              "fieldName": "start_date"
+            },
+            {
+              "fieldLabel": "End Date",
+              "fieldType": "date",
+              "fieldName": "end_date"
+            },
+            {
+              "fieldLabel": "report_type",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Summary"
+                  },
+                  {
+                    "option": "Detailed"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "focus",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Full"
+                  },
+                  {
+                    "option": "Income"
+                  },
+                  {
+                    "option": "Expenses"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        144
+      ],
+      "id": "b9a4362a-08e5-4572-806d-b6060d65a4e8",
+      "name": "On form submission",
+      "webhookId": "de1efa3e-c375-41b4-9ea1-8b144d90dde9"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Account Sheet": {
+      "ai_tool": [
+        [
+          {
+            "node": "Data Analyst",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Data Analyst",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Analyst": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Data Analyst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "cf778519-a7d1-4184-a082-5e2c65cc251e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b3e466f0e23da6be4e0ad49c767513cc1e689e591ea49cca61d03fa8eef17460"
+  },
+  "id": "U4yXABVZzFYHwGst",
+  "tags": []
+}
